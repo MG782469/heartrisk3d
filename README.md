@@ -9,7 +9,7 @@ HeartRisk 3D predicts coronary artery disease (CAD) and stenosis of the three ma
 ![HeartRisk 3D](docs/img/app_overview.png)
 
 - **Live demo (no install):** https://mg782469.github.io/heartrisk3d/ *(runs entirely in your browser)*
-- **Demo video:** *add YouTube link*
+- **Demo video:** (https://youtu.be/SJu2aZJmrYk?si=2erk7RjGCt6PwFr-)
 - **Documentation (6 pages):** [docs/DOCUMENTATION.pdf](docs/DOCUMENTATION.pdf)
 
 ## What it does
