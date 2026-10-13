@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HeartRisk 3D</title>
+  <meta name="description" content="Interactive 3D coronary artery disease and vessel-level stenosis risk with explanations, uncertainty and what-if analysis. Decision support / education only.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.6.8-1.4 2.3-2.6 4.4-2.6 3.6 0 5.7 3.8 4.2 7.2C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>
+      <div><b>HeartRisk 3D</b><span>Coronary risk, mapped to the heart</span></div>
+    </div>
+    <div class="badges">
+      <span class="badge warn" title="This tool does not replace angiography or clinical assessment.">Decision support / education only. Not a diagnosis.</span>
+      <span class="badge ok" id="privacyBadge" title="All computation happens on this device.">Data stays on this device</span>
+      <span class="badge" id="modeBadge">engine: …</span>
+      <button class="badge tourbtn" id="btnTour" type="button">Take the tour</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- ======================= INPUT ======================= -->
+    <section class="panel input" aria-label="Patient input">
+      <div class="panel-h">
+        <h2>Patient</h2>
+        <select id="preset" aria-label="Load example patient"></select>
+      </div>
+      <div class="avail">
+        <span>Tests available</span>
+        <label><input type="checkbox" data-mod="ecg" checked> ECG</label>
+        <label><input type="checkbox" data-mod="labs" checked> Labs</label>
+        <label><input type="checkbox" data-mod="echo" checked> Echo</label>
+      </div>
+      <p class="hint" id="availHint">History and symptoms are always used. Turn off tests that were not done; a model trained without them is used.</p>
+      <div class="seg" role="tablist" aria-label="Field view">
+        <button class="on" data-fields="quick" type="button">Key fields</button>
+        <button data-fields="all" type="button">All 55 fields</button>
+      </div>
+      <form id="form" autocomplete="off"></form>
+    </section>
+
+    <!-- ======================= 3D ======================= -->
+    <section class="panel viewer" aria-label="3D heart">
+      <div id="heart3d"></div>
+      <div class="vbar">
+        <div class="views">
+          <button type="button" data-view="anterior">Anterior</button>
+          <button type="button" data-view="lateral">Left lateral</button>
+          <button type="button" data-view="inferior">Inferior</button>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="tTerr" checked> Territories</label>
+          <label><input type="checkbox" id="tFlow" checked> Flow</label>
+        </div>
+      </div>
+      <div class="legend">
+        <span>Stenosis probability</span>
+        <div class="ramp"></div>
+        <div class="ticks"><span>0%</span><span>50%</span><span>100%</span></div>
+      </div>
+      <div class="bullseye" id="bullseye" title="AHA 17-segment bullseye: typical supply territories"></div>
+      <p class="vnote">Click a vessel. Colour = vessel-level probability. The dataset has no lesion position, so the whole vessel is coloured. Grey = left main (not predicted).</p>
+    </section>
+
+    <!-- ======================= OUTPUT ======================= -->
+    <section class="panel output" aria-label="Results">
+      <nav class="tabs" role="tablist">
+        <button class="on" data-tab="summary" type="button">Summary</button>
+        <button data-tab="vessels" type="button">Vessels</button>
+        <button data-tab="why" type="button">Why</button>
+        <button data-tab="whatif" type="button">What-if</button>
+        <button data-tab="model" type="button">Model</button>
+      </nav>
+      <div class="tab on" id="tab-summary"></div>
+      <div class="tab" id="tab-vessels"></div>
+      <div class="tab" id="tab-why"></div>
+      <div class="tab" id="tab-whatif"></div>
+      <div class="tab" id="tab-model"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Data: Extension of Z-Alizadeh Sani dataset (UCI ML Repository, CC BY 4.0), 303 patients.</span>
+    <span id="ver"></span>
+    <span>Predictions are for decision support and education only and are not a substitute for formal diagnostic imaging.</span>
+  </footer>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="data/model_bundle.js"></script>
+  <script src="js/anatomy.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/heart.js"></script>
+  <script src="js/bullseye.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

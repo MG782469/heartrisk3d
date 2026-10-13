@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>HeartRisk 3D - Documentation</title>
+<style>
+@page { size: A4; margin: 13mm 13mm 12mm; }
+body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 9.6pt; line-height: 1.38; color: #1d2a2c; }
+h1 { font-size: 19pt; margin: 0; color: #0e4d52; }
+h2 { font-size: 12.5pt; color: #0e4d52; border-bottom: 2px solid #d9821e; padding-bottom: 2px; margin: 12px 0 5px; page-break-after: avoid; }
+h3 { font-size: 10.5pt; margin: 8px 0 3px; color: #137c80; page-break-after: avoid; }
+p { margin: 3px 0 5px; }
+ul { margin: 2px 0 5px 16px; padding: 0; }
+li { margin: 1px 0; }
+table { border-collapse: collapse; width: 100%; margin: 4px 0 6px; font-size: 8.8pt; page-break-inside: avoid; }
+th, td { border: 1px solid #c9dcda; padding: 2px 5px; text-align: left; }
+th { background: #eaf4f3; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.sub { color: #5b6b6e; margin: 2px 0 6px; }
+.note { background: #fcefdc; border-left: 4px solid #d9821e; padding: 4px 8px; margin: 5px 0; }
+.img { width: 100%; border: 1px solid #c9dcda; border-radius: 4px; }
+.two { display: flex; gap: 8px; }
+.two img { width: 50%; border: 1px solid #c9dcda; border-radius: 4px; }
+pre { background: #f2f6f6; border: 1px solid #d5e3e2; padding: 5px 7px; font-size: 8pt; line-height: 1.25; margin: 4px 0; white-space: pre-wrap; }
+code { font-family: Consolas, monospace; font-size: 8.6pt; }
+.pb { page-break-before: always; }
+.cap { font-size: 8pt; color: #5b6b6e; margin: 1px 0 6px; }
+</style></head><body>
+
+<h1>HeartRisk 3D</h1>
+<div class="sub"><b>Multimodal AI Hackathon 2026 · Track A: Cardiovascular Risk Visualization &amp; Prediction</b> · Manas Girdhar, BIT Mesra · repository: github.com/MG782469/heartrisk3d</div>
+
+<img class="img" src="img/app_overview.png" alt="HeartRisk 3D main screen">
+<div class="cap">Figure 1. Patient inputs (left), interactive 3D heart with LAD/LCX/RCA coloured by predicted stenosis probability and an AHA 17-segment bullseye (centre), decision summary with uncertainty (right).</div>
+
+<h2>1. Overview</h2>
+<p>Risk percentages alone do not tell a clinician or a patient <i>where</i> disease is likely. HeartRisk 3D predicts overall coronary artery disease (CAD) and &ge;50% stenosis of the LAD, LCX and RCA from routine clinical data, and maps each vessel's probability onto an interactive 3D heart. Every prediction comes with (i) an explanation of which factors and which <b>test types</b> drove it, (ii) an uncertainty range and a 90% conformal prediction set that can say "uncertain: refer", and (iii) safety checks for unusual inputs. A visible disclaimer states that the tool is for decision support and education only.</p>
+<ul>
+<li><b>Multimodal by design:</b> inputs are grouped into five modalities (history, symptoms/examination, ECG, laboratory, echocardiography). Eight model versions cover every combination of ECG / labs / echo availability, so the tool still works when, for example, echo is not available at a primary health centre, and it shows how much confidence is lost.</li>
+<li><b>Two engines, one model:</b> a Flask API (scikit-learn + SHAP) and an in-browser engine that runs the same exported model bundle (maximum difference 5&times;10<sup>-11</sup>), enabling a no-install live demo where patient data never leaves the browser.</li>
+</ul>
+
+<h2>2. Dataset and preprocessing</h2>
+<p><b>Data:</b> Extension of Z-Alizadeh Sani dataset (UCI, CC BY 4.0): 303 patients, 59 columns, no missing values. Targets: <code>Cath</code> (CAD 216 / Normal 87), <code>LAD</code> (177 stenotic), <code>LCX</code> (119), <code>RCA</code> (114). CAD equals "at least one stenotic vessel" for 302/303 patients.</p>
+<ul>
+<li><b>Encoding:</b> Y/N &rarr; 1/0, sex &rarr; male = 1, BBB one-hot (LBBB, RBBB), VHD ordinal (none&ndash;severe), functional class and Region RWMA ordinal; constant <code>Exertional CP</code> dropped. 55 inputs in 5 modality groups.</li>
+<li><b>Leakage control:</b> <code>LAD, LCX, RCA, Cath</code> are never inputs (requirement 1d); an automated test checks every model. Standardisation is fitted inside every CV fold through a <code>Pipeline</code>.</li>
+<li><b>Split:</b> stratified 80/20 on the number of diseased vessels (242 train / 61 held-out test, seed 42). The test set is touched only for final reporting.</li>
+<li><b>Trap avoided:</b> <code>Region RWMA</code> is a 0&ndash;4 score with no location. As the problem statement warns, it is used only as a model input and is never treated as an anatomical coordinate.</li>
+</ul>
+
+<h2>3. Model architecture</h2>
+<pre>for target in {CAD, LAD, LCX, RCA}:
+    benchmark 4 families with repeated stratified 5x5 CV (C of logistic regression tuned by nested CV)
+    deploy the simplest family within 1 SE of the best (1-SE rule)
+for modality set in {bedside, +ECG, +labs, +echo, ECG+labs, ECG+echo, labs+echo, all}:
+    out-of-fold scores (5x5 CV) -> Platt calibration -> Mondrian conformal thresholds (alpha = 0.10)
+    fit on all 242 training patients + 10 bootstrap refits (probability band)
+export model_bundle.json (scalers, coefficients / trees, Platt, conformal, OOD statistics, reports)</pre>
+<table><tr><th>Family</th><th class="n">CAD</th><th class="n">LAD</th><th class="n">LCX</th><th class="n">RCA</th></tr>
+<tr><td>Elastic-net logistic regression</td><td class="n"><b>0.945 &#10003;</b></td><td class="n"><b>0.847 &#10003;</b></td><td class="n">0.696</td><td class="n"><b>0.734 &#10003;</b></td></tr>
+<tr><td>Gradient boosting (150 trees, depth 2)</td><td class="n">0.945</td><td class="n">0.849</td><td class="n"><b>0.728 &#10003;</b></td><td class="n">0.694</td></tr>
+<tr><td>Random forest (400 trees)</td><td class="n">0.947</td><td class="n">0.858</td><td class="n">0.720</td><td class="n">0.720</td></tr>
+<tr><td>HistGB, monotone (age, DM, HTN, typical pain)</td><td class="n">0.936</td><td class="n">0.839</td><td class="n">0.719</td><td class="n">0.683</td></tr></table>
+<div class="cap">Table 1. Mean CV ROC-AUC (25 folds). &#10003; = deployed. Interpretable logistic regression is kept wherever it is within one standard error of the best; only LCX needs boosting.</div>
+<ul>
+<li><b>Calibration:</b> Platt scaling on out-of-fold scores (isotonic overfits at n = 242). Out-of-fold Brier: CAD 0.078, LAD 0.157, LCX 0.199, RCA 0.198.</li>
+<li><b>Uncertainty:</b> a 10&ndash;90th percentile band from 10 bootstrap refits, and class-conditional (Mondrian) split-conformal sets; the most probable label is always added, which only enlarges a set, so coverage is preserved and a 59% patient can never be called "CAD unlikely". A set of {CAD} reads "CAD likely", {No CAD} "CAD unlikely", both labels "Uncertain: refer to a cardiologist".</li>
+<li><b>Out-of-distribution:</b> training range check plus Ledoit&ndash;Wolf Mahalanobis distance on continuous features (flag above the 99th training percentile). Demo presets are real held-out patients chosen only among in-distribution cases.</li>
+<li><b>Coherence:</b> expected number of diseased vessels = p(LAD) + p(LCX) + p(RCA) (exact by linearity of expectation); a warning appears if vessel and CAD estimates contradict each other.</li>
+</ul>
+
+<h2 class="pb">4. Evaluation</h2>
+<table><tr><th>Target</th><th class="n">ROC-AUC</th><th class="n">Accuracy</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">F1</th><th class="n">PR-AUC</th><th class="n">CV ROC-AUC</th></tr>
+<tr><td>CAD</td><td class="n">0.853 [0.76&ndash;0.94]</td><td class="n">0.770 [0.66&ndash;0.87]</td><td class="n">0.875 [0.76&ndash;0.97]</td><td class="n">0.795 [0.67&ndash;0.91]</td><td class="n">0.833 [0.73&ndash;0.92]</td><td class="n">0.948</td><td class="n">0.946 &plusmn; 0.038</td></tr>
+<tr><td>LAD</td><td class="n">0.791 [0.67&ndash;0.89]</td><td class="n">0.754 [0.64&ndash;0.85]</td><td class="n">0.788 [0.63&ndash;0.92]</td><td class="n">0.765 [0.62&ndash;0.91]</td><td class="n">0.776 [0.64&ndash;0.88]</td><td class="n">0.821</td><td class="n">0.853 &plusmn; 0.057</td></tr>
+<tr><td>LCX</td><td class="n">0.756 [0.62&ndash;0.87]</td><td class="n">0.672 [0.54&ndash;0.79]</td><td class="n">0.684 [0.46&ndash;0.89]</td><td class="n">0.481 [0.30&ndash;0.68]</td><td class="n">0.565 [0.38&ndash;0.72]</td><td class="n">0.716</td><td class="n">0.728 &plusmn; 0.066</td></tr>
+<tr><td>RCA</td><td class="n">0.677 [0.53&ndash;0.82]</td><td class="n">0.672 [0.56&ndash;0.79]</td><td class="n">0.550 [0.33&ndash;0.77]</td><td class="n">0.500 [0.29&ndash;0.70]</td><td class="n">0.524 [0.32&ndash;0.69]</td><td class="n">0.597</td><td class="n">0.743 &plusmn; 0.074</td></tr></table>
+<div class="cap">Table 2. Held-out test set (n = 61) with 95% bootstrap CIs (1,000 resamples), threshold 0.5 on calibrated probabilities; last column: repeated 5x5 CV on the 242 training patients.</div>
+<p><b>Reading the numbers honestly.</b> CAD is predicted well. LAD is moderate. LCX and RCA are much harder to predict from these features (AUC about 0.7), and the app labels them as low-confidence through wide bands and frequent "uncertain" conformal sets. The CV&ndash;test gap for CAD lies inside the test CI (61 patients).</p>
+
+<h3>Multimodal ablation (CV ROC-AUC)</h3>
+<table><tr><th>Inputs available</th><th class="n">CAD</th><th class="n">LAD</th><th class="n">LCX</th><th class="n">RCA</th></tr>
+<tr><td>History + symptoms (bedside)</td><td class="n">0.917</td><td class="n">0.802</td><td class="n">0.675</td><td class="n">0.740</td></tr>
+<tr><td>+ ECG</td><td class="n">0.932</td><td class="n">0.805</td><td class="n">0.673</td><td class="n">0.739</td></tr>
+<tr><td>+ Laboratory</td><td class="n">0.917</td><td class="n">0.801</td><td class="n">0.731</td><td class="n">0.744</td></tr>
+<tr><td>+ Echocardiography</td><td class="n">0.936</td><td class="n">0.853</td><td class="n">0.658</td><td class="n">0.739</td></tr>
+<tr><td>+ ECG + labs + echo (all)</td><td class="n"><b>0.946</b></td><td class="n"><b>0.853</b></td><td class="n"><b>0.728</b></td><td class="n"><b>0.743</b></td></tr></table>
+<div class="cap">Table 3. Value of each modality. Echo carries most of the LAD signal (+0.05), labs most of the LCX signal (+0.06), ECG adds +0.015 for CAD at the bedside. All 8 combinations are in the app's Model tab.</div>
+
+<div class="two"><img src="img/model.png" alt="Model tab"><img src="img/uncertain.png" alt="Uncertain prediction without labs and echo"></div>
+<div class="cap">Figure 2. Left: Model tab (metrics with CIs, benchmark, ablation, ROC, calibration, decision curve, conformal coverage, subgroups). Right: same borderline patient with labs and echo switched off: the bedside+ECG model is used, the band widens and the decision becomes "Uncertain: refer".</div>
+
+<ul>
+<li><b>Conformal coverage on test</b> (nominal 90%): CAD 84%, LAD 82%, LCX 85%, RCA 82%; within the &plusmn;7-point sampling error of n = 61, but slightly low, which we report rather than tune on the test set. "Uncertain" sets: CAD 13%, LAD 25%, LCX 33%, RCA 36%.</li>
+<li><b>Decision curve (CAD, out-of-fold):</b> net benefit exceeds "refer all" from threshold 0.2 upward (e.g. 0.61 vs 0.42 at 0.5).</li>
+<li><b>Negative result kept:</b> a classifier chain (LCX/RCA models also given CAD and LAD scores, fitted inside each fold) did not help: LCX &minus;0.004 &plusmn; 0.007, RCA +0.006 &plusmn; 0.009 CV AUC, so it was not deployed.</li>
+<li><b>Subgroups (CV AUC, CAD):</b> male 0.92, female 0.97, age &lt; 60 0.96, age &ge; 60 0.84; the older group is harder (CAD prevalence 88%).</li>
+</ul>
+
+<h2 class="pb">5. 3D visualisation pipeline</h2>
+<ul>
+<li><b>Geometry:</b> procedural heart (lathe profile, leftward apex shift, interventricular and atrioventricular grooves, flatter diaphragmatic wall), atria, aorta and pulmonary trunk, built in code with Three.js (no third-party mesh, so no licence issues; about 40k triangles, responsive even with software WebGL).</li>
+<li><b>Coronary anatomy:</b> paths are surface coordinates (height, angle) in <code>anatomy.js</code>: LAD down the anterior interventricular groove to the apex with diagonals; LCX in the left AV groove with an obtuse marginal; RCA in the right AV groove to the posterior descending artery (right-dominant); left main shown in grey as "not predicted".</li>
+<li><b>Single source of truth:</b> each model output maps to exactly one vessel group in the registry (tested). Adding a structure or a new target is a registry entry, not a redesign; a glTF mesh can be added the same way.</li>
+<li><b>Risk mapping:</b> each vessel is coloured on a colour-blind-safe teal&rarr;amber&rarr;crimson ramp with its percentage label. Because the dataset records whether a vessel is stenotic but <b>not where</b>, the whole vessel is coloured; no fake lesion is drawn. Flow particles slow down as risk rises; optional shading of typical supply territories; AHA 17-segment bullseye (LAD 1,2,7,8,13,14,17; RCA 3,4,9,10,15; LCX 5,6,11,12,16) labelled "typical, varies with dominance".</li>
+<li><b>Interaction:</b> orbit, zoom, click/tap a vessel or its label (opens its card), camera presets (anterior, left lateral, inferior) that orbit around the heart, heartbeat animation.</li>
+</ul>
+
+<h2>6. Clinical explanation dashboard</h2>
+<div class="two"><img src="img/why.png" alt="Why tab"><img src="img/whatif.png" alt="What-if tab"></div>
+<div class="cap">Figure 3. Left: "Why" tab: modality contribution and the patient's top factors, with values compared with normal ranges. Right: "What-if" with the counter-intuitive BMI effect explicitly flagged.</div>
+<ul>
+<li><b>Summary:</b> decision card (CAD likely / unlikely / uncertain: refer / check inputs), CAD probability with band and conformal set, per-vessel probabilities, expected number of diseased vessels, OOD and coherence warnings, patient-friendly audio summary in English and Hindi (browser speech).</li>
+<li><b>Why:</b> per-target attributions in log-odds relative to the average training patient: exact linear SHAP (logistic models), TreeSHAP (API) or occlusion-to-mean (browser) for boosting; aggregated by modality to show which test type drove the prediction; abnormal values flagged against reference ranges.</li>
+<li><b>What-if:</b> only modifiable inputs (BP, BMI, FBS, LDL, HDL, TG, smoking), clearly labelled as model sensitivity and not a treatment effect. In this dataset a lower BMI <i>raises</i> the CAD estimate (confounding, "obesity paradox"); the app detects and explains such cases.</li>
+<li><b>Workflow:</b> one-click printable report (3D snapshot, predictions, sets, main factors, key inputs, disclaimer) and a 4-step guided tour for first-time users and judges.</li>
+<li><b>Safety:</b> the disclaimer is visible on every screen; nothing is stored; the API binds to 127.0.0.1 only.</li>
+</ul>
+
+<h2>7. System integration</h2>
+<pre>Browser UI (form, Three.js heart, tabs)
+   |  PredictionService: API mode if /api/health answers, otherwise browser mode
+   +--> Flask API (127.0.0.1)  /api/predict  /api/whatif  /api/metrics  /api/schema  /api/patients
+   |        scikit-learn models (models.joblib) + SHAP explainers (warmed up at start)
+   +--> engine.js (same model_bundle.json; GitHub Pages live demo)
+Every input change -> debounced (120 ms) prediction -> 3D colours, bullseye, all tabs update</pre>
+<ul>
+<li><b>Tests (pytest, 8 checks):</b> no target leakage in any model; modality sets drop the right features; each vessel maps to one 3D structure; API contract; API equals exported bundle; reduced model used when tests are missing; typical chest pain raises CAD risk (sanity); Node parity of the browser engine.</li>
+<li><b>Reproducibility:</b> fixed seeds, pinned <code>requirements.txt</code>, dataset SHA-256 shown in the app footer, one command to retrain.</li>
+</ul>
+
+<h2>8. Usage</h2>
+<pre>pip install -r requirements.txt
+python app/server.py            # open http://127.0.0.1:8000   (Windows: run.bat)
+python ml/train.py              # optional: retrain everything, rewrites artifacts/ and web/data/
+python -m pytest -q             # run the checks
+Live demo without install: https://mg782469.github.io/heartrisk3d/</pre>
+<p>Pick an example patient (real held-out cases) or enter values; switch off tests that were not done; click a vessel; open Why, What-if and Model. Deep links such as <code>?preset=1&amp;off=labs,echo&amp;tab=why</code> reproduce any view.</p>
+
+<h2>9. Limitations</h2>
+<ul>
+<li>Single-centre dataset of 303 patients; no external validation; test estimates have wide CIs.</li>
+<li>LCX and RCA discrimination is modest (AUC about 0.7); outputs are flagged accordingly.</li>
+<li>Associations, not causes; what-if is not treatment advice.</li>
+<li>The heart and territories are illustrative, not patient-specific anatomy; lesion position is not available.</li>
+</ul>
+<p class="cap">References: Z-Alizadeh Sani dataset, UCI ML Repository (CC BY 4.0); Cerqueira et al., Standardized myocardial segmentation, Circulation 2002; Angelopoulos &amp; Bates, A gentle introduction to conformal prediction, 2021; Lundberg &amp; Lee, SHAP, NeurIPS 2017; Vickers &amp; Elkin, Decision curve analysis, 2006; Three.js (MIT).</p>
+</body></html>
