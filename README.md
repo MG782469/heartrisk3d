@@ -88,6 +88,7 @@ UCI dataset (303) -> leakage guard -> 80/20 split -> 4 families x repeated 5x5 C
 Single-centre dataset of 303 patients, no external validation; test-set estimates are noisy (see CIs). Conformal coverage on the test set (82-85%) is below the 90% target but within sampling error for n = 61. The 3D heart is illustrative, not patient-specific anatomy. See [MODEL_CARD.md](MODEL_CARD.md).
 
 ## Credits
+- Moulvi Gufran - Collaborator
 
 Dataset: *Extension of Z-Alizadeh Sani dataset*, UCI Machine Learning Repository (CC BY 4.0). Three.js (MIT). AHA 17-segment model: Cerqueira et al., *Circulation* 2002.
 
